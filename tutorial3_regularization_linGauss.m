@@ -21,7 +21,8 @@
 % Tutorial instructions: Execute each section below separately using
 % cmd-enter. For detailed suggestions on how to interact with this
 % tutorial, see header material in tutorial1_PoissonGLM.m
-
+%% Clean
+clear; clc; close all;
 %% ====  1. Load the raw data ============
 
 % ------------------------------------------------------------------------

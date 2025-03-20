@@ -43,8 +43,8 @@
 % go to the next section. And repeat. The figure window will always display
 % the plots made in the current section, so there's no need to go clicking
 % through multiple windows to find the one you're looking for!
-
-
+%% Clean
+clear; clc; close all;
 %% ====  1. Load the raw data ============
 
 % ------------------------------------------------------------------------
@@ -55,39 +55,39 @@
 % ------------------------------------------------------------------------
 % (Data from Uzzell & Chichilnisky 2004):
 datdir = 'data_RGCs/';  % directory where stimulus lives
-load([datdir, 'Stim']);    % stimulus (temporal binary white noise)
+load([datdir, 'Stim']);    % stimulus (temporal binary white noise) 
 load([datdir,'stimtimes']); % stim frame times in seconds (if desired)
 load([datdir, 'SpTimes']); % load spike times (in units of stim frames)
 
 % Pick a cell to work with
 cellnum = 3; % (1-2 are OFF cells; 3-4 are ON cells).
-tsp = SpTimes{cellnum};
+ts_spiketrain = SpTimes{cellnum}; % in seconds. sync with the vector stimtimes.
 % -------------------------------------------------------------------------
 
 % Compute some basic statistics on the data
-dtStim = (stimtimes(2)-stimtimes(1)); % time bin size for stimulus (s)
-RefreshRate = 1/dtStim; % Refresh rate of the monitor
-nT = size(Stim,1); % number of time bins in stimulus
-nsp = length(tsp); % number of spikes
+dtStim = (stimtimes(2)-stimtimes(1)); % time bin size for stimulus (s); 0.0083 second.
+RefreshRate = 1/dtStim; % Refresh rate of the monitor (presented at ~120 Hz framerate)
+num_TimeBin = size(Stim,1); % number of time bins in stimulus
+num_spikes  = length(ts_spiketrain); % number of spikes
 
 % Print out some basic info
 fprintf('--------------------------\n');
 fprintf('Loaded RGC data: cell %d\n', cellnum);
-fprintf('Number of stim frames: %d  (%.1f minutes)\n', nT, nT*dtStim/60);
-fprintf('Time bin size: %.1f ms\n', dtStim*1000);
-fprintf('Number of spikes: %d (mean rate=%.1f Hz)\n\n', nsp, nsp/nT*RefreshRate);
+fprintf('Number of stim frames: %d  (%.1f minutes)\n', num_TimeBin, num_TimeBin*dtStim/60);
+fprintf('Time bin size: %.1f ms\n', dtStim*1000); % Time bin size: 8.3 ms
+fprintf('Number of spikes: %d (mean rate=%.1f Hz)\n\n', num_spikes, num_spikes/num_TimeBin*RefreshRate);
 
 % Let's visualize some of the raw data
 subplot(211);
-iiplot = 1:120; % bins of stimulus to plot
-ttplot = iiplot*dtStim; % time bins of stimulus
-plot(ttplot,Stim(iiplot), 'linewidth', 2);  axis tight;
+ii_th_timbin_plot = 1:120; % bins of stimulus to plot
+timebin_stim_plot = ii_th_timbin_plot*dtStim; % time bins of stimulus
+plot(timebin_stim_plot,Stim(ii_th_timbin_plot), 'linewidth', 2);  axis tight;
 title('raw stimulus (full field flicker)');
 ylabel('stim intensity');
 subplot(212);
-tspplot = tsp((tsp>=ttplot(1))&(tsp<ttplot(end)));
+tspplot = ts_spiketrain((ts_spiketrain>=timebin_stim_plot(1))&(ts_spiketrain<timebin_stim_plot(end)));
 plot(tspplot, 1, 'ko', 'markerfacecolor', 'k');
-set(gca,'xlim', ttplot([1 end]));
+set(gca,'xlim', timebin_stim_plot([1 end]));
 title('spike times'); xlabel('time (s)');
 
 %% ==== 2. Bin the spike train ===== 
@@ -95,17 +95,15 @@ title('spike times'); xlabel('time (s)');
 % For now we will assume we want to use the same time bin size as the time
 % bins used for the stimulus. Later, though, we'll wish to vary this.
 
-tbins = (.5:nT)*dtStim; % time bin centers for spike train binnning
-sps = hist(tsp,tbins)';  % binned spike train
+histcount_binedges = (0.5:num_TimeBin)*dtStim; % time bin centers for spike train binnning
+count_spikes = hist(ts_spiketrain,histcount_binedges)';  % binned spike train; % histcounts
 
 % Replot the responses we'll putting into our regression as counts
 subplot(212);
-stem(ttplot,sps(iiplot), 'k', 'linewidth', 2);
+stem(timebin_stim_plot,count_spikes(ii_th_timbin_plot), 'k', 'linewidth', 2);
 title('binned spike counts');
 ylabel('spike count'); xlabel('time (s)');
-set(gca,'xlim', ttplot([1 end]), 'ylim', [0 3.5]);
-
-
+set(gca,'xlim', timebin_stim_plot([1 end]), 'ylim', [0 3.5]);
 %% ==== 3. Build the design matrix: slow version ======
 % This is a necessary step before we can fit the model: assemble a matrix
 % that contains the relevant regressors for each time bin of the response,
@@ -113,20 +111,23 @@ set(gca,'xlim', ttplot([1 end]), 'ylim', [0 3.5]);
 % stimulus chunk for predicting the spike count at a given time bin
 
 % Set the number of time bins of stimulus to use for predicting spikes
-ntfilt = 25;  % Try varying this, to see how performance changes!
+stim_hist_winsize = 25;  % Try varying this, to see how performance changes!
 
 % Build the design matrix: Slow version
-paddedStim = [zeros(ntfilt-1,1); Stim]; % pad early bins of stimulus with zero
-Xdsgn = zeros(nT,ntfilt);
-for j = 1:nT
-    Xdsgn(j,:) = paddedStim(j:j+ntfilt-1)'; % grab last 'nkt' bins of stmiulus and insert into this row
+paddedStim = [zeros(stim_hist_winsize-1,1); Stim]; % pad early bins of stimulus with zero
+
+X_design_matrix = zeros(num_TimeBin,stim_hist_winsize);
+for j = 1:num_TimeBin
+    % grab last 'nkt' bins of stmiulus and insert into this row
+    X_design_matrix(j,:) = paddedStim(j:j+stim_hist_winsize-1)'; 
 end
 
 % Let's visualize a small part of the design matrix just to see it
-clf; imagesc(-ntfilt+1:0, 1:50, Xdsgn(1:50,:));
+clf; imagesc(-stim_hist_winsize+1:0, 1:50, X_design_matrix(1:50,:));
 xlabel('lags before spike time bin');
 ylabel('time bin of response');
 title('Design matrix');
+colorbar;
 
 % Notice it has a structure where every row is a shifted copy of the row
 % above, which comes from the fact that for each time bin of response,
@@ -141,17 +142,17 @@ title('Design matrix');
 % learn more about this function).
 
 % Build design matrix without using a for loop
-paddedStim = [zeros(ntfilt-1,1); Stim]; % pad early bins of stimulus with zero
-Xdsgn = hankel(paddedStim(1:end-ntfilt+1), Stim(end-ntfilt+1:end));
+paddedStim = [zeros(stim_hist_winsize-1,1); Stim]; % pad early bins of stimulus with zero
+X_design_matrix = hankel(paddedStim(1:end-stim_hist_winsize+1), Stim(end-stim_hist_winsize+1:end));
 
 % (You can check for you like that this gives the same matrix as the one
 % created above!)
 
-imagesc(-ntfilt+1:0, 1:50, Xdsgn(1:50,:));
+imagesc(-stim_hist_winsize+1:0, 1:50, X_design_matrix(1:50,:));
 xlabel('lags before spike time bin');
 ylabel('time bin of response');
 title('Design matrix');
-
+colorbar;
 
 %% === 4. Compute and visualize the spike-triggered average (STA) ====
 
@@ -168,11 +169,11 @@ title('Design matrix');
 % design matrix and binned spike counts.
 
 % It's extremely easy to compute the STA now that we have the design matrix
-sta = (Xdsgn'*sps)/nsp;
+spike_trigger_avg = (X_design_matrix'*count_spikes)/num_spikes;
 
 % Plot it
-ttk = (-ntfilt+1:0)*dtStim; % time bins for STA (in seconds)
-plot(ttk,ttk*0, 'k--', ttk, sta, 'o-', 'linewidth', 2); axis tight;
+ttk = (-stim_hist_winsize+1:0)*dtStim; % time bins for STA (in seconds)
+plot(ttk,ttk*0, 'k--', ttk, spike_trigger_avg, 'o-', 'linewidth', 2); axis tight;
 title('STA'); xlabel('time before spike (s)');
 
 % If you're still using cell #1, this should look like a biphasic filter
@@ -196,14 +197,14 @@ title('STA'); xlabel('time before spike (s)');
 % (Xdsng'*Xdsgn)^{-1} is close to a scaled version of the identity.
 
 % whitened STA
-wsta = (Xdsgn'*Xdsgn)\sta*nsp;
+whiten_spike_trigger_avg = (X_design_matrix'*X_design_matrix)\spike_trigger_avg*num_spikes;
 % or equivalently inv(Xdsgn'*Xdsgn)*(Xdsgn'*sps)
 % this is just the least-squares regression formula!
 
 % Let's plot them both (rescaled as unit vectors so we can see differences
 % in their shape).
-h = plot(ttk,ttk*0, 'k--', ttk, sta./norm(sta), 'o-',...
-    ttk, wsta./norm(wsta), 'o-', 'linewidth', 2); axis tight;
+h = plot(ttk,ttk*0, 'k--', ttk, spike_trigger_avg./norm(spike_trigger_avg), 'o-',...
+    ttk, whiten_spike_trigger_avg./norm(whiten_spike_trigger_avg), 'o-', 'linewidth', 2); axis tight;
 legend(h(2:3), 'STA', 'wSTA', 'location', 'northwest');
 title('STA and whitened STA'); xlabel('time before spike (s)');
 
@@ -213,18 +214,18 @@ title('STA and whitened STA'); xlabel('time before spike (s)');
 % corresponds to a proper estimate of the model parameters (i.e., for a
 % Gaussian GLM). Let's inspect this prediction
 
-sppred_lgGLM = Xdsgn*wsta;  % predicted spikes from linear-Gaussian GLM
+sppred_lgGLM = X_design_matrix*whiten_spike_trigger_avg;  % predicted spikes from linear-Gaussian GLM
 
 % Let's see how good this "prediction" is
 % (Prediction in quotes because we are (for now) looking at the performance
 % on training data, not test data... so it isn't really a prediction!)
 
 % Plot real spike train and prediction
-stem(ttplot,sps(iiplot)); hold on;
-plot(ttplot,sppred_lgGLM(iiplot),'linewidth',2); hold off;
+stem(timebin_stim_plot,count_spikes(ii_th_timbin_plot)); hold on;
+plot(timebin_stim_plot,sppred_lgGLM(ii_th_timbin_plot),'linewidth',2); hold off;
 title('linear-Gaussian GLM: spike count prediction');
 ylabel('spike count'); xlabel('time (s)');
-set(gca,'xlim', ttplot([1 end]));
+set(gca,'xlim', timebin_stim_plot([1 end]));
 legend('spike count', 'lgGLM');
 
 %% 4d. Fitting and predicting with a linear-Gaussian-GLM with offset
@@ -234,30 +235,30 @@ legend('spike count', 'lgGLM');
 % non-zero mean (since the stimulus here was normalized to have zero mean).
 
 % Updated design matrix
-Xdsgn2 = [ones(nT,1), Xdsgn]; % just add a column of ones
+Xdsgn2 = [ones(num_TimeBin,1), X_design_matrix]; % just add a column of ones
 
 % Compute whitened STA
-MLwts = (Xdsgn2'*Xdsgn2)\(Xdsgn2'*sps); % this is just the LS regression formula
+MLwts = (Xdsgn2'*Xdsgn2)\(Xdsgn2'*count_spikes); % this is just the LS regression formula
 const = MLwts(1); % the additive constant
 wsta2 = MLwts(2:end); % the linear filter part
 
 % Now redo prediction (with offset)
-sppred_lgGLM2 = const + Xdsgn*wsta2;
+sppred_lgGLM2 = const + X_design_matrix*wsta2;
 
 % Plot this stuff
-stem(ttplot,sps(iiplot)); hold on;
-h=plot(ttplot,sppred_lgGLM(iiplot),ttplot,sppred_lgGLM2(iiplot)); 
+stem(timebin_stim_plot,count_spikes(ii_th_timbin_plot)); hold on;
+h=plot(timebin_stim_plot,sppred_lgGLM(ii_th_timbin_plot),timebin_stim_plot,sppred_lgGLM2(ii_th_timbin_plot)); 
 set(h, 'linewidth', 2);  hold off;
 title('linear-Gaussian GLM: spike count prediction');
 ylabel('spike count'); xlabel('time (s)');
-set(gca,'xlim', ttplot([1 end]));
+set(gca,'xlim', timebin_stim_plot([1 end]));
 legend('spike count', 'lgGLM', 'lgGLM w/ offset');
 
 % Let's report the relevant training error (squared prediction error on
 % training data) so far just to see how we're doing:
-mse1 = mean((sps-sppred_lgGLM).^2); % mean squared error, GLM no offset
-mse2 = mean((sps-sppred_lgGLM2).^2);% mean squared error, with offset
-rss = mean((sps-mean(sps)).^2); % squared error of spike train
+mse1 = mean((count_spikes-sppred_lgGLM).^2); % mean squared error, GLM no offset
+mse2 = mean((count_spikes-sppred_lgGLM2).^2);% mean squared error, with offset
+rss = mean((count_spikes-mean(count_spikes)).^2); % squared error of spike train
 fprintf('Training perf (R^2): lin-gauss GLM, no offset: %.2f\n',1-mse1/rss);
 fprintf('Training perf (R^2): lin-gauss GLM, w/ offset: %.2f\n',1-mse2/rss);
 
@@ -266,7 +267,7 @@ fprintf('Training perf (R^2): lin-gauss GLM, w/ offset: %.2f\n',1-mse2/rss);
 % Let's finally move on to the LNP / Poisson GLM!
 
 % This is super-easy if we rely on built-in GLM fitting code
-pGLMwts = glmfit(Xdsgn,sps,'poisson', 'constant', 'on');
+pGLMwts = glmfit(X_design_matrix,count_spikes,'poisson', 'constant', 'on');
 pGLMconst = pGLMwts(1); % constant ("dc term"); 
 pGLMfilt = pGLMwts(2:end); % stimulus filter
 
@@ -281,7 +282,7 @@ pGLMfilt = pGLMwts(2:end); % stimulus filter
 % > pGLMwts = glmfit(Xdsgn2,sps,'poisson', 'link', 'log','constant','off');
 
 % Compute predicted spike rate on training data
-ratepred_pGLM = exp(pGLMconst + Xdsgn*pGLMfilt);
+ratepred_pGLM = exp(pGLMconst + X_design_matrix*pGLMfilt);
 %  (equivalent to if we had just written exp(Xdsgn2*pGLMwts))/dtStim;
 
 %%  5b. Make plots showing and spike rate predictions
@@ -294,12 +295,12 @@ title('(normalized) linear-Gaussian and Poisson GLM filter estimates');
 xlabel('time before spike (s)');
 
 subplot(212);
-stem(ttplot,sps(iiplot)); hold on;
-h = plot(ttplot,sppred_lgGLM2(iiplot),ttplot,ratepred_pGLM(iiplot)); 
+stem(timebin_stim_plot,count_spikes(ii_th_timbin_plot)); hold on;
+h = plot(timebin_stim_plot,sppred_lgGLM2(ii_th_timbin_plot),timebin_stim_plot,ratepred_pGLM(ii_th_timbin_plot)); 
 set(h, 'linewidth', 2);  hold off;
 title('spike rate predictions');
 ylabel('spikes / bin'); xlabel('time (s)');
-set(gca,'xlim', ttplot([1 end]));
+set(gca,'xlim', timebin_stim_plot([1 end]));
 legend('spike count', 'lin-gauss GLM', 'exp-poisson GLM');
 
 % Note the rate prediction here is in units of spikes/bin. If we wanted
@@ -323,7 +324,7 @@ legend('spike count', 'lin-gauss GLM', 'exp-poisson GLM');
 nfbins = 25; 
 
 % compute filtered stimulus
-rawfilteroutput = pGLMconst + Xdsgn*pGLMfilt;
+rawfilteroutput = pGLMconst + X_design_matrix*pGLMfilt;
 
 % bin filter output and get bin index for each filtered stimulus
 [cts,binedges,binID] = histcounts(rawfilteroutput,nfbins); 
@@ -332,7 +333,7 @@ fx = binedges(1:end-1)+diff(binedges(1:2))/2; % use bin centers for x positions
 % now compute mean spike count in each bin
 fy = zeros(nfbins,1); % y values for nonlinearity
 for jj = 1:nfbins
-    fy(jj) = mean(sps(binID==jj));
+    fy(jj) = mean(count_spikes(binID==jj));
 end
 fy = fy/dtStim; % divide by bin size to get units of sp/s;
 
@@ -382,17 +383,17 @@ title('nonlinearity');
 % time bins in the experiment.
 
 % 1. for GLM with exponential nonlinearity
-ratepred_pGLM = exp(pGLMconst + Xdsgn*pGLMfilt); % rate under exp nonlinearity
-LL_expGLM = sps'*log(ratepred_pGLM) - sum(ratepred_pGLM);
+ratepred_pGLM = exp(pGLMconst + X_design_matrix*pGLMfilt); % rate under exp nonlinearity
+LL_expGLM = count_spikes'*log(ratepred_pGLM) - sum(ratepred_pGLM);
 
 % 2. for GLM with non-parametric nonlinearity
-ratepred_pGLMnp = dtStim*fnlin(pGLMconst + Xdsgn*pGLMfilt); % rate under nonpar nonlinearity
-LL_npGLM = sps(sps>0)'*log(ratepred_pGLMnp(sps>0)) - sum(ratepred_pGLMnp);
+ratepred_pGLMnp = dtStim*fnlin(pGLMconst + X_design_matrix*pGLMfilt); % rate under nonpar nonlinearity
+LL_npGLM = count_spikes(count_spikes>0)'*log(ratepred_pGLMnp(count_spikes>0)) - sum(ratepred_pGLMnp);
 
 % Now compute the rate under "homogeneous" Poisson model that assumes a
 % constant firing rate with the correct mean spike count.
-ratepred_const = nsp/nT;  % mean number of spikes / bin
-LL0 = nsp*log(ratepred_const) - nT*ratepred_const;
+ratepred_const = num_spikes/num_TimeBin;  % mean number of spikes / bin
+LL0 = num_spikes*log(ratepred_const) - num_TimeBin*ratepred_const;
 
 % Single-spike information:
 % ------------------------
@@ -406,8 +407,8 @@ LL0 = nsp*log(ratepred_const) - nT*ratepred_const;
 % output by the model, compared to when we only know the (constant) mean
 % spike rate. 
 
-SSinfo_expGLM = (LL_expGLM - LL0)/nsp/log(2);
-SSinfo_npGLM = (LL_npGLM - LL0)/nsp/log(2);
+SSinfo_expGLM = (LL_expGLM - LL0)/num_spikes/log(2);
+SSinfo_npGLM = (LL_npGLM - LL0)/num_spikes/log(2);
 % (if we don't divide by log 2 we get it in nats)
 
 fprintf('\n empirical single-spike information:\n ---------------------- \n');
@@ -417,11 +418,11 @@ fprintf(' np-GLM: %.2f bits/sp\n',SSinfo_npGLM);
 % Let's plot the rate predictions for the two models 
 % --------------------------------------------------
 subplot(111);
-stem(ttplot,sps(iiplot)); hold on;
-plot(ttplot,ratepred_pGLM(iiplot),ttplot,ratepred_pGLMnp(iiplot),'linewidth',2); 
+stem(timebin_stim_plot,count_spikes(ii_th_timbin_plot)); hold on;
+plot(timebin_stim_plot,ratepred_pGLM(ii_th_timbin_plot),timebin_stim_plot,ratepred_pGLMnp(ii_th_timbin_plot),'linewidth',2); 
 hold off; title('rate predictions');
 ylabel('spikes / bin'); xlabel('time (s)');
-set(gca,'xlim', ttplot([1 end]));
+set(gca,'xlim', timebin_stim_plot([1 end]));
 legend('spike count', 'exp-GLM', 'np-GLM');
 
 
@@ -436,8 +437,8 @@ legend('spike count', 'exp-GLM', 'np-GLM');
 % The model with lower AIC is 
 % their likelihood (at the ML estimate), penalized by the number of parameters  
 
-AIC_expGLM = -2*LL_expGLM + 2*(1+ntfilt); 
-AIC_npGLM = -2*LL_npGLM + 2*(1+ntfilt+nfbins);
+AIC_expGLM = -2*LL_expGLM + 2*(1+stim_hist_winsize); 
+AIC_npGLM = -2*LL_npGLM + 2*(1+stim_hist_winsize+nfbins);
 
 fprintf('\n AIC comparison:\n ---------------------- \n');
 fprintf('exp-GLM: %.1f\n',AIC_expGLM);
@@ -474,31 +475,31 @@ end
 % Lastly, let's simulate the response of the GLM to a repeated stimulus and
 % make raster plots 
 
-iiplot = 1:60; % time bins of stimulus to use
-ttplot = iiplot*dtStim; % time indices for these stimuli
-StimRpt = Stim(iiplot); % repeat stimulus 
+ii_th_timbin_plot = 1:60; % time bins of stimulus to use
+timebin_stim_plot = ii_th_timbin_plot*dtStim; % time indices for these stimuli
+StimRpt = Stim(ii_th_timbin_plot); % repeat stimulus 
 nrpts = 50;  % number of repeats
-frate = exp(pGLMconst+Xdsgn(iiplot,:)*pGLMfilt);% firing rate in each bin
+frate = exp(pGLMconst+X_design_matrix(ii_th_timbin_plot,:)*pGLMfilt);% firing rate in each bin
 
 % Or uncomment this line to use the non-parametric nonlinearity instead:
 %frate = dtStim*fnlin(pGLMconst+Xdsgn(iiplot,:)*pGLMfilt);% firing rate in each bin
 
 % First, plot stimulus and true spikes
 subplot(611);
-plot(ttplot,Stim(iiplot), 'linewidth', 2);  axis tight;
+plot(timebin_stim_plot,Stim(ii_th_timbin_plot), 'linewidth', 2);  axis tight;
 title('raw stimulus (full field flicker)');
 ylabel('stim intensity'); set(gca,'xticklabel', {});
 subplot(612);
-tspplot = tsp((tsp>=ttplot(1))&(tsp<ttplot(end)));
+tspplot = ts_spiketrain((ts_spiketrain>=timebin_stim_plot(1))&(ts_spiketrain<timebin_stim_plot(end)));
 plot(tspplot, 1, 'ko', 'markerfacecolor', 'k');
-set(gca,'xlim', ttplot([1 end]));
+set(gca,'xlim', timebin_stim_plot([1 end]));
 title('true spike times');
 set(gca,'xticklabel', {});
 
 % Simulate spikes using draws from a Bernoulli (coin flipping) process
 spcounts = poissrnd(repmat(frate',nrpts,1)); % sample spike counts for each time bin
 subplot(6,1,3:6);
-imagesc(ttplot,1:nrpts, spcounts);
+imagesc(timebin_stim_plot,1:nrpts, spcounts);
 ylabel('repeat #');
 xlabel('time (s)');
 title('GLM spike trains');
@@ -507,17 +508,17 @@ title('GLM spike trains');
 
 upsampfactor = 100; % divide each time bin by this factor
 dt_fine = dtStim/upsampfactor; % use bins 100 time bins finer
-tt_fine = dt_fine/2:dt_fine:ttplot(end);
+tt_fine = dt_fine/2:dt_fine:timebin_stim_plot(end);
 
 % Compute the fine-time-bin firing rate (which must be scaled down by bin width)
-frate_fine = interp1(ttplot,frate,tt_fine,'nearest','extrap')'/upsampfactor;
+frate_fine = interp1(timebin_stim_plot,frate,tt_fine,'nearest','extrap')'/upsampfactor;
 
 % now draw fine-timescale spike train
 spcounts_fine = poissrnd(repmat(frate_fine',nrpts,1)); % sample spike counts for each time bin
 
 % Make plot
 subplot(6,1,3:6);
-imagesc(ttplot,1:nrpts, spcounts_fine);
+imagesc(timebin_stim_plot,1:nrpts, spcounts_fine);
 ylabel('repeat #');
 xlabel('time (s)');
 title('GLM spike trains');

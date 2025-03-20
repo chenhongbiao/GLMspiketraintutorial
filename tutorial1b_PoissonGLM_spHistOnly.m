@@ -17,8 +17,8 @@
 % directly (pillow at princeton.edu).
 %
 % Last updated: July 18, 2022 (JW Pillow)
-
-
+%% Clean
+clear; clc; close all;
 %% ====  1. Load the raw data ============
 
 % ------------------------------------------------------------------------
@@ -33,7 +33,7 @@ load([datdir,'stimtimes']); % stim frame times in seconds (if desired)
 load([datdir, 'SpTimes']); % load spike times (in units of stim frames)
 
 % Pick a cell to work with
-cellnum = 1; % (1-2 are OFF cells; 3-4 are ON cells).
+cellnum = 3; % (1-2 are OFF cells; 3-4 are ON cells).
 tsp = SpTimes{cellnum};
 % -------------------------------------------------------------------------
 

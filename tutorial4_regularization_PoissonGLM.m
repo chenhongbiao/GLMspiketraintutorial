@@ -20,7 +20,8 @@
 % Tutorial instructions: Execute each section below separately using
 % cmd-enter. For detailed suggestions on how to interact with this
 % tutorial, see header material in tutorial1_PoissonGLM.m
-
+%% Clean
+clear; clc; close all;
 %% ====  1. Load the raw data ============
 
 % ------------------------------------------------------------------------
@@ -37,7 +38,7 @@ ncells = length(SpTimes);  % number of neurons (4 for this dataset).
 % Neurons #1-2 are OFF, #3-4 are ON.
 % -------------------------------------------------------------------------
 
-addpath GLMtools; % add directory with log-likelihood functions
+%addpath GLMtools; % add directory with log-likelihood functions
 
 % Pick a cell to work with
 cellnum = 3; % (1-2 are OFF cells; 3-4 are ON cells).
@@ -201,10 +202,10 @@ subplot(222);
 plot(ttk,w_ridge(2:end,:)); axis tight;  
 title('all ridge estimates');
 subplot(221);
-semilogx(lamvals,-negLtrain,'o-', 'linewidth', 2);
+semilogx(lamvals,negLtrain,'o-', 'linewidth', 2);
 title('training logli');
 subplot(223); 
-semilogx(lamvals,-negLtest,'-o', 'linewidth', 2);
+semilogx(lamvals,negLtest,'-o', 'linewidth', 2);
 xlabel('lambda');
 title('test logli');
 
@@ -275,10 +276,10 @@ subplot(222);
 plot(ttk,w_smooth(2:end,:)); axis tight;  
 title('all smoothing estimates');
 subplot(221);
-semilogx(lamvals,-negLtrain_sm,'o-', 'linewidth', 2);
+semilogx(lamvals,negLtrain_sm,'o-', 'linewidth', 2);
 title('training LL');
 subplot(223); 
-semilogx(lamvals,-negLtest_sm,'-o', 'linewidth', 2);
+semilogx(lamvals,negLtest_sm,'-o', 'linewidth', 2);
 xlabel('lambda');
 title('test LL');
 
@@ -297,8 +298,8 @@ legend(h(2:3), 'ridge', 'L2 smoothing', 'location', 'northwest');
 % clearly the "L2 smoothing" filter looks better by eye!
 
 % Last, lets see which one actually achieved lower test error
-fprintf('\nBest ridge test LL:      %.5f\n', -min(negLtest));
-fprintf('Best smoothing test LL:  %.5f\n', -min(negLtest_sm));
+fprintf('\nBest ridge test LL:      %.5f\n', min(negLtest));
+fprintf('Best smoothing test LL:  %.5f\n', min(negLtest_sm));
 
 
 %% Advanced exercise:
